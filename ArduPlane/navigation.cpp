@@ -362,3 +362,49 @@ bool Plane::reached_loiter_target(void)
     return nav_controller->reached_loiter_target();
 }
     
+/*
+  handle speed and height control for GCAS. 
+  The elevator is used to change target altitude. 
+  The throttle is used to change target airspeed or throttle.
+ */
+void Plane::update_gcas_speed_height(void)
+{
+    // wait until wings level?
+    const float toMicro = 1.0e-6;
+    const uint32_t updateRate_ms = 1000;  // 60Hz
+    float climbRate = 5.0;// [m/s] range: 1-10
+    
+    uint32_t now = micros();
+    if (now - target_altitude.last_elev_check_us >= updateRate_ms) 
+    {
+        // we don't run this on every loop as it would give too small granularity on quadplanes at 300Hz, and
+        // give below 1cm altitude change, which would result in no climb or descent
+        float dt = (now - target_altitude.last_elev_check_us) * toMicro;
+        dt = constrain_float(dt, 0.1, 0.15);
+
+        target_altitude.last_elev_check_us = now;
+        
+        float elevator_input = 1.0;
+    
+        if (g.flybywire_elev_reverse) {
+            elevator_input = -elevator_input;
+        }
+
+        int32_t alt_change_cm = climbRate * elevator_input * dt * 100; 
+        change_target_altitude(alt_change_cm);
+
+        //gcs().send_text(MAV_SEVERITY_INFO, "Update GCAS Speed and Height!");
+        
+        /*if (is_zero(elevator_input) && !is_zero(target_altitude.last_elevator_input)) {
+            // the user has just released the elevator, lock in
+            // the current altitude
+            set_target_altitude_current();
+        }*/
+        
+    }
+    
+    altitude_error_cm = calc_altitude_error_cm();
+    
+    //calc_throttle();
+    //calc_nav_pitch();
+}

@@ -564,6 +564,8 @@ void Plane::calc_nav_pitch()
         commanded_pitch = plane.guided_state.forced_rpy_cd.y;
     }
 
+    if(auto_gcas_engaged)update_gcas_speed_height();
+
     nav_pitch_cd = constrain_int32(commanded_pitch, pitch_limit_min_cd, aparm.pitch_limit_max_cd.get());
 }
 
@@ -581,6 +583,8 @@ void Plane::calc_nav_roll()
             millis() - plane.guided_state.last_forced_rpy_ms.x < 3000) {
         commanded_roll = plane.guided_state.forced_rpy_cd.x;
     }
+
+    if(auto_gcas_engaged)commanded_roll=3500;
 
     nav_roll_cd = constrain_int32(commanded_roll, -roll_limit_cd, roll_limit_cd);
     update_load_factor();

@@ -122,6 +122,10 @@
 #include <SITL/SITL.h>
 #endif
 
+// Auto GCAS library
+#include "gcas_main.h"
+#include "gcas_environment.h"
+
 /*
   a plane specific AP_AdvancedFailsafe class
  */
@@ -1070,6 +1074,11 @@ private:
     // support for AP_Avoidance custom flight mode, AVOID_ADSB
     bool avoid_adsb_init(bool ignore_checks);
     void avoid_adsb_run();
+
+    // support for Auto GCAS
+    void auto_gcas(void);
+    void update_gcas_speed_height(void);
+    bool auto_gcas_engaged = false;
 
     enum Failsafe_Action {
         Failsafe_Action_None      = 0,

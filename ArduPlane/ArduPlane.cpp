@@ -103,6 +103,7 @@ const AP_Scheduler::Task Plane::scheduler_tasks[] = {
 #if LANDING_GEAR_ENABLED == ENABLED
     SCHED_TASK(landing_gear_update, 5, 50),
 #endif
+    SCHED_TASK(auto_gcas, 50, 100),
 };
 
 constexpr int8_t Plane::_failsafe_priorities[6];
@@ -834,7 +835,8 @@ void Plane::update_alt()
             soaring_active = true;
         }
 #endif
-        
+        if(auto_gcas_engaged)target_airspeed_cm = 1800;
+
         SpdHgt_Controller->update_pitch_throttle(relative_target_altitude_cm(),
                                                  target_airspeed_cm,
                                                  flight_stage,
@@ -951,5 +953,69 @@ void Plane::publish_osd_info()
     osd.set_nav_info(nav_info);
 }
 #endif
+
+/*
+  update Auto GCAS
+ */
+void Plane::auto_gcas(void)
+{
+    /*
+        - abstract the state updating
+        - abstract any calcuations (dive_angle)
+        - make climb_rate global, comes from gcas_main.cpp
+        - make all GCAS settings come from gcas_main.cpp (controller)
+    */
+    
+    static int ctr = 0;
+    const int moduleRate = 60;
+    ctr++;
+
+    gcasLib_ownshipState ardupilot_ownshipState;
+
+    // Commanded States
+    ardupilot_ownshipState.roll_cmd = nav_roll_cd;
+    ardupilot_ownshipState.pitch_cmd = nav_pitch_cd;
+    ardupilot_ownshipState.climb_rate_cmd = 5;
+    ardupilot_ownshipState.tgt_alt_amsl_cm = target_altitude.amsl_cm;
+    ardupilot_ownshipState.tgt_air_spd_cm = target_airspeed_cm;
+
+    // Current States
+    ardupilot_ownshipState.roll = ahrs.roll;
+    ardupilot_ownshipState.pitch = ahrs.pitch;
+    ardupilot_ownshipState.yaw = ahrs.yaw;
+    ardupilot_ownshipState.lat = current_loc.lat;
+    ardupilot_ownshipState.lon = current_loc.lng;
+    ardupilot_ownshipState.alt = (float)current_loc.alt;
+    ardupilot_ownshipState.climb_rate = barometer.get_climb_rate();
+    ardupilot_ownshipState.va = smoothed_airspeed;
+    //ardupilot_ownshipState.dive_angle = (float)(asin(ardupilot_ownshipState.climb_rate/ardupilot_ownshipState.va)) * 180.0 / M_PI; // breaking
+
+    // Miscellaneous
+    ardupilot_ownshipState.auto_gcas_engaged = auto_gcas_engaged;
+    ardupilot_ownshipState.tgt_alt_amsl_cm = target_altitude.amsl_cm;
+    ardupilot_ownshipState.alt_error = calc_altitude_error_cm();
+    ardupilot_ownshipState.tgt_air_spd_cm = target_airspeed_cm;
+    // load factor, roll rate, wind speed, wind bearing
+    float demanded_roll = fabsf(nav_roll_cd*0.01f);
+    if (demanded_roll > 85) {
+        // limit to 85 degrees to prevent numerical errors
+        demanded_roll = 85;
+    }
+    ardupilot_ownshipState.aero_load_factor = 1.0f / safe_sqrt(cosf(radians(demanded_roll)));
+
+    // update GCAS inputs
+    gcasLib_EnvReadOwnshipStates(ardupilot_ownshipState);   
+    
+    // run GCAS model
+    gcasLib_EnvRunMain(); // have this return GCAS ON or set something?
+
+    // update GCAS autopilot outputs
+    if(ctr>=(60*moduleRate))
+    {
+        ctr = 60*moduleRate;
+        auto_gcas_engaged = true;
+    }
+
+}
 
 AP_HAL_MAIN_CALLBACKS(&plane);
